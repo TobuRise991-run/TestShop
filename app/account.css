@@ -1,0 +1,14 @@
+.acct{position:relative}
+.btn svg{vertical-align:-4px}
+.btn svg + span{margin-left:6px}
+.avatar{width:44px;height:44px;border-radius:50%;border:2px solid var(--brand);background:var(--brand);color:var(--on);font-weight:800}
+.menu-scrim{position:fixed;inset:0}
+.menu{position:absolute;right:0;top:52px;min-width:230px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 30px rgba(0,0,0,.18);padding:6px;display:grid}
+.menu-head{padding:10px 12px;border-bottom:1px solid var(--line);margin-bottom:4px;word-break:break-all}
+.menu a,.menu button{display:block;text-align:left;background:none;border:0;border-radius:8px;padding:10px 12px;color:var(--ink);text-decoration:none;font-weight:500}
+.menu a:hover,.menu button:hover{background:var(--bg)}
+.modal{position:fixed;z-index:50;top:50%;left:50%;transform:translate(-50%,-50%);width:min(400px,calc(100% - 32px));background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px;max-height:90vh;overflow:auto}
+.mtabs{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.mtab{flex:1;background:none;border:0;border-bottom:3px solid transparent;padding:10px 4px;font-weight:600;color:var(--muted)}
+.mtab.on{color:var(--brand);border-color:var(--accent)}
+@media(max-width:520px){.hide-sm{display:none}}

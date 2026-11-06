@@ -1,8 +1,19 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { supabase, fmt } from "../lib/supabase";
+import "./account.css";
 
 const FREE = 500000;
+// Khách đăng ký chỉ bằng tên đăng nhập; hệ thống tạo email nội bộ từ tên này (không gửi thư).
+// Hãy đổi thành tên miền của bạn nếu Supabase báo email không hợp lệ.
+const USER_DOMAIN = "khach.nhamoc.vn";
+const toEmail = (u) => (u.includes("@") ? u : u + "@" + USER_DOMAIN);
+const okName = (u) => /^[a-z0-9._-]{3,24}$/.test(u);
+const UserIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+    <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" />
+  </svg>
+);
 
 export default function Home() {
   const [products, setProducts] = useState(null);
@@ -14,14 +25,35 @@ export default function Home() {
   const [form, setForm] = useState({ name: "", phone: "", address: "", note: "" });
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  // tài khoản
+  const [user, setUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false); // false | "login" | "signup"
+  const [af, setAf] = useState({ user: "", email: "", pw: "" });
+  const [authMsg, setAuthMsg] = useState(null);
+  const [authBusy, setAuthBusy] = useState(false);
 
   useEffect(() => {
     supabase.from("products").select("*").eq("in_stock", true)
       .order("created_at", { ascending: false })
       .then(({ data }) => setProducts(data || []));
     try { setCart(JSON.parse(localStorage.getItem("cart") || "{}")); } catch {}
+    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setUser(s?.user ?? null));
+    return () => sub.subscription.unsubscribe();
   }, []);
   useEffect(() => { try { localStorage.setItem("cart", JSON.stringify(cart)); } catch {} }, [cart]);
+  useEffect(() => {
+    if (!user) { setIsAdmin(false); return; }
+    supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => setIsAdmin(!!data));
+  }, [user]);
+  useEffect(() => {
+    const k = (e) => { if (e.key === "Escape") { setAuthOpen(false); setMenuOpen(false); setOpen(false); } };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
 
   const cats = useMemo(() => ["Tất cả", ...new Set((products || []).map((p) => p.category))], [products]);
   const list = useMemo(() => {
@@ -51,11 +83,58 @@ export default function Home() {
     setMsg({ t: "Đặt hàng thành công. Chúng tôi sẽ gọi xác nhận sớm." });
   }
 
+  const closeAuth = () => { setAuthOpen(false); setAuthMsg(null); setAf({ user: "", email: "", pw: "" }); };
+  async function submitAuth(e) {
+    e.preventDefault(); setAuthBusy(true); setAuthMsg(null);
+    const u = af.user.trim().toLowerCase();
+    if (authOpen === "signup" && !okName(u)) {
+      setAuthBusy(false);
+      return setAuthMsg({ err: true, t: "Tên đăng nhập gồm 3 đến 24 ký tự: chữ thường không dấu, số, dấu chấm, gạch dưới hoặc gạch ngang." });
+    }
+    if (authOpen === "login") {
+      const { error } = await supabase.auth.signInWithPassword({ email: toEmail(u), password: af.pw });
+      setAuthBusy(false);
+      if (error) return setAuthMsg({ err: true, t: "Sai tên đăng nhập hoặc mật khẩu." });
+      closeAuth();
+    } else {
+      const { data, error } = await supabase.auth.signUp({ email: toEmail(u), password: af.pw, options: { data: { username: u } } });
+      setAuthBusy(false);
+      if (error) return setAuthMsg({ err: true, t: /registered|exists/i.test(error.message)
+        ? "Tên đăng nhập này đã có người dùng." : "Không tạo được tài khoản: " + error.message });
+      if (data.session) closeAuth();
+      else setAuthMsg({ err: true, t: "Tài khoản đã tạo nhưng đang bắt xác nhận email. Hãy tắt Confirm email trong Supabase." });
+    }
+  }
+  const display = user?.user_metadata?.username || (user?.email || "").split("@")[0];
+
   return (
     <>
       <header><div className="wrap bar">
         <a className="logo" href="/">Nhà Mộc</a>
         <button className="btn ghost" onClick={() => setOpen(true)}>Giỏ hàng<span className="badge">{count}</span></button>
+        <div className="acct">
+          {user ? (
+            <>
+              <button className="avatar" onClick={() => setMenuOpen((o) => !o)} aria-label="Tài khoản" aria-expanded={menuOpen}>
+                {(display || user.email || "?")[0].toUpperCase()}
+              </button>
+              {menuOpen && (
+                <>
+                  <div className="menu-scrim" onClick={() => setMenuOpen(false)} />
+                  <div className="menu">
+                    <div className="menu-head"><b>{display}</b></div>
+                    {isAdmin && <a href="/admin">Quản trị cửa hàng</a>}
+                    <button onClick={async () => { setMenuOpen(false); await supabase.auth.signOut(); }}>Đăng xuất</button>
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <button className="btn ghost" onClick={() => setAuthOpen("login")} aria-label="Đăng nhập hoặc tạo tài khoản">
+              <UserIcon /><span className="hide-sm">Đăng nhập</span>
+            </button>
+          )}
+        </div>
       </div></header>
 
       <main className="wrap">
@@ -96,7 +175,31 @@ export default function Home() {
           )}
       </main>
 
-      <footer><div className="wrap muted">© 2026 Nhà Mộc. Hotline 1900 0000. <a href="/admin">Quản trị</a></div></footer>
+      <footer><div className="wrap muted">© 2026 Nhà Mộc. Hotline 1900 0000.</div></footer>
+
+      {authOpen && (
+        <>
+          <div className="scrim" onClick={closeAuth} />
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Tài khoản">
+            <div className="mtabs">
+              <button className={"mtab" + (authOpen === "login" ? " on" : "")} onClick={() => { setAuthOpen("login"); setAuthMsg(null); }}>Đăng nhập</button>
+              <button className={"mtab" + (authOpen === "signup" ? " on" : "")} onClick={() => { setAuthOpen("signup"); setAuthMsg(null); }}>Tạo tài khoản</button>
+              <button className="btn ghost" onClick={closeAuth} aria-label="Đóng">✕</button>
+            </div>
+            <form className="stack" onSubmit={submitAuth}>
+              {authOpen === "signup" && <p className="muted small" style={{ margin: 0 }}>Chỉ cần tên đăng nhập và mật khẩu.</p>}
+              <input required placeholder="Tên đăng nhập" autoComplete="username" autoCapitalize="none" value={af.user} onChange={(e) => setAf({ ...af, user: e.target.value })} />
+              <input required type="password" minLength={6} placeholder="Mật khẩu (ít nhất 6 ký tự)"
+                autoComplete={authOpen === "login" ? "current-password" : "new-password"}
+                value={af.pw} onChange={(e) => setAf({ ...af, pw: e.target.value })} />
+              {authMsg && <div className={authMsg.err ? "err" : "ok"}>{authMsg.t}</div>}
+              <button className="btn" disabled={authBusy}>
+                {authBusy ? "Đang xử lý…" : authOpen === "login" ? "Đăng nhập" : "Tạo tài khoản"}
+              </button>
+            </form>
+          </div>
+        </>
+      )}
 
       {open && <div className="scrim" onClick={() => setOpen(false)} />}
       <aside className={"drawer" + (open ? " on" : "")} aria-hidden={!open} aria-label="Giỏ hàng">

@@ -43,7 +43,7 @@ export default function Admin() {
   async function login(e) {
     e.preventDefault(); setErr("");
     const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
-    if (error) setErr("Sai email hoặc mật khẩu.");
+      if (error) setErr("Loi: " + error.message);
   }
   async function save(e) {
     e.preventDefault(); setBusy(true); setNote(null);
