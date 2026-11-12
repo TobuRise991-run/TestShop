@@ -4,7 +4,8 @@ import { supabase, fmt } from "../../lib/supabase";
 
 const EMPTY = { name: "", category: "", price: "", old_price: "", description: "", in_stock: true, image_url: "" };
 const STATUS = { new: "Mới", confirmed: "Đã xác nhận", shipping: "Đang giao", done: "Hoàn tất", cancelled: "Đã hủy" };
-
+const norm = (s) =>
+    String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/đ/g, "d");
 export default function Admin() {
   const [user, setUser] = useState(undefined);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -19,6 +20,10 @@ export default function Admin() {
   const [fileKey, setFileKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [q, setQ] = useState("");
+  const [catFilter, setCatFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
@@ -31,13 +36,34 @@ export default function Admin() {
       .then(({ data }) => setIsAdmin(!!data));
   }, [user]);
 
-  const load = useCallback(async () => {
-    const [p, o] = await Promise.all([
-      supabase.from("products").select("*").order("created_at", { ascending: false }),
-      supabase.from("orders").select("*").order("created_at", { ascending: false }),
-    ]);
-    setProducts(p.data || []); setOrders(o.data || []);
-  }, []);
+  // const load = useCallback(async () => {
+  //   const [p, o] = await Promise.all([
+  //     supabase.from("products").select("*").order("created_at", { ascending: false }),
+  //     supabase.from("orders").select("*").order("created_at", { ascending: false }),
+  //   ]);
+  //   setProducts(p.data || []); setOrders(o.data || []);
+    // }, []);
+
+    const filteredOrders = orders.filter((o) => {
+        if (statusFilter && o.status !== statusFilter) return false;
+        const kw = norm(q).trim();
+        if (!kw) return true;
+        if (/^[\d.,\s]+$/.test(kw)) {
+            const digits = kw.replace(/\D/g, "");
+            return String(o.phone ?? "").replace(/\D/g, "").includes(digits) || String(o.total).includes(digits);
+        }
+        const text = [o.customer_name, o.address, o.note, STATUS[o.status], ...(o.items || []).map((i) => i.name)]
+            .map(norm).join(" ");
+        return text.includes(kw);
+    });
+    const load = useCallback(async () => {
+        const [p, o, c] = await Promise.all([
+            supabase.from("products").select("*").order("created_at", { ascending: false }),
+            supabase.from("orders").select("*").order("created_at", { ascending: false }),
+            supabase.from("categories").select("name").order("name"),
+        ]);
+        setProducts(p.data || []); setOrders(o.data || []); setCategories(c.data || []);
+    }, []);
   useEffect(() => { if (isAdmin) load(); }, [isAdmin, load]);
 
   async function login(e) {
@@ -45,6 +71,19 @@ export default function Admin() {
     const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
       if (error) setErr("Loi: " + error.message);
   }
+    async function onCategoryChange(e) {
+        const value = e.target.value;
+        if (value !== "__new__") return setF({ ...f, category: value });
+        const name = (prompt("Tên danh mục mới:") || "").trim();
+        if (!name) return;
+        const { error } = await supabase.from("categories").insert({ name });
+        // 23505 = danh mục đã tồn tại, vẫn cho chọn bình thường
+        if (error && error.code !== "23505") {
+            return setNote({ err: true, t: "Không thêm được danh mục: " + error.message });
+        }
+        setF({ ...f, category: name });
+        load();
+    }
   async function save(e) {
     e.preventDefault(); setBusy(true); setNote(null);
     let image_url = f.image_url || null;
@@ -73,7 +112,17 @@ export default function Admin() {
   async function setStatus(id, status) {
     await supabase.from("orders").update({ status }).eq("id", id); load();
   }
-  const out = () => supabase.auth.signOut();
+    const out = () => supabase.auth.signOut();
+  // Lọc sản phẩm theo ô tìm kiếm (tên, loại, giá) và bộ lọc loại
+  const filtered = products.filter((p) => {
+    if (catFilter && p.category !== catFilter) return false;
+    const kw = norm(q).trim();
+    if (!kw) return true;
+    if (/^[\d.,\s]+$/.test(kw)) {
+        return String(p.price).includes(kw.replace(/\D/g, ""));
+    }
+    return norm(p.name).includes(kw) || norm(p.category).includes(kw);
+  });
 
   if (user === undefined) return <div className="admin wrap">Đang tải…</div>;
 
@@ -100,7 +149,7 @@ export default function Admin() {
   return (
     <div className="admin wrap">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <h1>Quản trị Nhà Mộc</h1>
+        <h1>Quản trị Tiệm Tạp Hoá</h1>
         <div style={{ display: "flex", gap: 8 }}>
           <a className="btn ghost" style={{ textDecoration: "none" }} href="/">Xem cửa hàng</a>
           <button className="btn ghost" onClick={out}>Đăng xuất</button>
@@ -116,13 +165,39 @@ export default function Admin() {
           <h2 style={{ marginTop: 0 }}>{f.id ? "Sửa sản phẩm" : "Thêm sản phẩm"}</h2>
           <div className="fgrid">
             <label>Tên sản phẩm<input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
-            <label>Danh mục<input required value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="Gốm sứ, Gỗ…" /></label>
-            <label>Giá bán (đ)<input required type="number" min="0" value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} /></label>
-            <label>Giá gốc (đ, nếu giảm giá)<input type="number" min="0" value={f.old_price} onChange={(e) => setF({ ...f, old_price: e.target.value })} /></label>
+                      {/* <label>Danh mục<input required value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="Figure" /></label> */}
+
+            <label>Danh mục
+                <select
+                    required
+                    value={f.category}
+                    onChange={async (e) => {
+                        if (e.target.value === "__new__") {
+                            const name = (prompt("Tên danh mục mới:") || "").trim();
+                            if (!name) return;
+                            const { error } = await supabase.from("categories").insert({ name });
+                            if (error && error.code !== "23505") return setNote({ err: true, t: "Không thêm được danh mục: " + error.message });
+                            setF({ ...f, category: name });
+                            load();
+                            return;
+                        }
+                        setF({ ...f, category: e.target.value });
+                    }}
+                >
+                    <option value="">-- Chọn danh mục --</option>
+                    {categories.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+                    {f.category && !categories.some((c) => c.name === f.category) && (
+                        <option value={f.category}>{f.category}</option>
+                    )}
+                    <option value="__new__">+ Thêm danh mục mới…</option>
+                </select>
+            </label>
+            <label>Giá bán (đ)<input required type="number" min="0" step="1000" value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} /></label>
+            <label>Giá gốc (đ, nếu giảm giá)<input type="number" min="0" step="1000" value={f.old_price} onChange={(e) => setF({ ...f, old_price: e.target.value })} /></label>
             <label className="full">Mô tả ngắn<textarea rows="2" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
             <label className="full">Ảnh sản phẩm {f.image_url && !file ? "(đang dùng ảnh hiện tại)" : ""}
               <input key={fileKey} type="file" accept="image/*" onChange={(e) => setFile(e.target.files[0] || null)} /></label>
-            <label><input type="checkbox" checked={f.in_stock} onChange={(e) => setF({ ...f, in_stock: e.target.checked })} /> Còn hàng, hiển thị trên cửa hàng</label>
+            <label><input type="checkbox" checked={f.in_stock} onChange={(e) => setF({ ...f, in_stock: e.target.checked })} /> Hiển thị trên cửa hàng</label>
           </div>
           {note && <p className={note.err ? "err" : "ok"}>{note.t}</p>}
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -130,7 +205,36 @@ export default function Admin() {
             {f.id && <button type="button" className="btn ghost" onClick={() => { setF(EMPTY); setFile(null); setFileKey((k) => k + 1); }}>Hủy sửa</button>}
           </div>
         </form>
+        {/* Thanh tìm kiếm và lọc */}
+        <div className="panel" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+                type="search"
+                style={{ flex: 1, minWidth: 220 }}
+                placeholder="Tìm theo tên, loại, giá…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+            />
+            <select style={{ width: "auto" }} value={catFilter} onChange={(e) => setCatFilter(e.target.value)} aria-label="Lọc theo loại">
+                <option value="">Tất cả loại</option>
+                {categories.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+            </select>
+            <span className="muted small">{filtered.length}/{products.length} sản phẩm</span>
+        </div>
+
         <div className="panel">
+            {filtered.length === 0 && (
+                <p className="muted">{products.length === 0 ? "Chưa có sản phẩm." : "Không tìm thấy sản phẩm phù hợp."}</p>
+            )}
+            {filtered.map((p) => (
+                <div className="rowitem" key={p.id}>
+                    <div className="t">{p.image_url ? <img src={p.image_url} alt="" /> : p.name[0]}</div>
+                    <div className="grow"><b>{p.name}</b><div className="muted small">{p.category} · {fmt(p.price)}{p.in_stock ? "" : " · Đang ẩn"}</div></div>
+                    <button className="btn ghost" onClick={() => { setF({ ...p, old_price: p.old_price ?? "", description: p.description ?? "", image_url: p.image_url ?? "" }); setFile(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Sửa</button>
+                    <button className="btn danger" onClick={() => remove(p.id)}>Xóa</button>
+                </div>
+            ))}
+        </div>
+        {/* <div className="panel">
           {products.length === 0 && <p className="muted">Chưa có sản phẩm.</p>}
           {products.map((p) => (
             <div className="rowitem" key={p.id}>
@@ -140,10 +244,10 @@ export default function Admin() {
               <button className="btn danger" onClick={() => remove(p.id)}>Xóa</button>
             </div>
           ))}
-        </div>
+        </div> */}
       </>)}
 
-      {tab === "orders" && (
+      {/* {tab === "orders" && (
         <div className="panel">
           {orders.length === 0 && <p className="muted">Chưa có đơn hàng.</p>}
           {orders.map((o) => (
@@ -161,7 +265,42 @@ export default function Admin() {
             </div>
           ))}
         </div>
-      )}
+      )} */}
+    {tab === "orders" && (<>
+        <div className="panel" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+                type="search"
+                style={{ flex: 1, minWidth: 220 }}
+                placeholder="Tìm theo tên khách, SĐT, địa chỉ, sản phẩm, tổng tiền…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+            />
+            <select style={{ width: "auto" }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Lọc theo trạng thái">
+                <option value="">Tất cả trạng thái</option>
+                {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <span className="muted small">{filteredOrders.length}/{orders.length} đơn hàng</span>
+        </div>
+        <div className="panel">
+            {filteredOrders.length === 0 && (
+                <p className="muted">{orders.length === 0 ? "Chưa có đơn hàng." : "Không tìm thấy đơn hàng phù hợp."}</p>
+            )}
+            {filteredOrders.map((o) => (
+                <div className="rowitem" key={o.id}>
+                    <div className="grow">
+                        <b>{o.customer_name}</b> · {o.phone}
+                        <div className="muted small">{o.address}{o.note ? " · " + o.note : ""}</div>
+                        <div className="small">{o.items.map((i) => i.name + " ×" + i.qty).join(", ")}</div>
+                        <div className="small muted">{new Date(o.created_at).toLocaleString("vi-VN")}</div>
+                    </div>
+                    <b>{fmt(o.total)}</b>
+                    <select style={{ width: "auto" }} value={o.status} onChange={(e) => setStatus(o.id, e.target.value)} aria-label="Trạng thái đơn hàng">
+                        {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                </div>
+            ))}
+        </div>
+    </>)}
     </div>
   );
 }

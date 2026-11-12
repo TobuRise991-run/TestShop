@@ -37,7 +37,7 @@ create policy "img_update" on storage.objects for update using (bucket_id = 'pro
 create policy "img_delete" on storage.objects for delete using (bucket_id = 'product-images' and is_admin());
 
 insert into products (name, category, price, old_price, description) values
-('Bình gốm Bát Tràng men xanh','Gốm sứ',320000,390000,'Men xanh ngọc, cao 28cm.'),
-('Thớt gỗ xoài chống ẩm','Gỗ',159000,199000,'Gỗ xoài xử lý chống ẩm.'),
-('Vỏ gối lanh tự nhiên 45cm','Vải lanh',135000,null,'Lanh mềm, giặt máy được.'),
-('Nến thơm sáp đậu nành','Trang trí',119000,null,'Cháy sạch, khoảng 40 giờ.');
+('Figure ','Nhựa',320000,390000,'cao 12cm, đường kính 5cm'),
+('...','..',159000,199000,'...'),
+('...','...',135000,null,'...'),
+('...','...',119000,null,'...');

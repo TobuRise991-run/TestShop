@@ -110,7 +110,7 @@ export default function Home() {
   return (
     <>
       <header><div className="wrap bar">
-        <a className="logo" href="/">Nhà Mộc</a>
+        <a className="logo" href="/">Tiệm Tạp Hoá Linh Tinh</a>
         <button className="btn ghost" onClick={() => setOpen(true)}>Giỏ hàng<span className="badge">{count}</span></button>
         <div className="acct">
           {user ? (
@@ -139,10 +139,10 @@ export default function Home() {
 
       <main className="wrap">
         <section className="hero">
-          <h1>Đồ gia dụng làm thủ công cho căn nhà của bạn</h1>
-          <p>Gốm, gỗ, vải lanh từ các làng nghề Việt Nam. Miễn phí giao hàng từ {fmt(FREE)}, thanh toán khi nhận hàng.</p>
+          <h1>Đồ linh tinh, lung linh, thông minh đến với căn nhà của bạn !</h1>
+          <p>Trang trí, Decor đẹp mắt. Miễn phí giao hàng từ {fmt(FREE)}, thanh toán khi nhận hàng.</p>
           <input className="search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
-            placeholder="Tìm bình gốm, thớt gỗ, gối lanh…" aria-label="Tìm sản phẩm" />
+            placeholder="Tìm đồ linh tinh figure,figure và figure …" aria-label="Tìm sản phẩm" />
         </section>
         <div className="tools">
           <div className="chips">
@@ -175,7 +175,7 @@ export default function Home() {
           )}
       </main>
 
-      <footer><div className="wrap muted">© 2026 Nhà Mộc. Hotline 1900 0000.</div></footer>
+      <footer><div className="wrap muted">© 2026 Tiệm Tạp Hoá Linh Tinh. Hotline : Say Bye !!!</div></footer>
 
       {authOpen && (
         <>
